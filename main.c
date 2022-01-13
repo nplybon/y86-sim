@@ -5,97 +5,96 @@
  */
 
 #include "p1-check.h"
+#include "p2-load.h"
 
 int main (int argc, char **argv)
 {
 
-    bool help = false;
-    bool show = false;
-    char* filename;
-    if (argc == 3) {
-        filename = argv[2];
-    } else {
-        filename = argv[1];
+    // parse command-line options
+    bool print_header = false;
+    bool print_segments = false;
+    bool print_membrief = false;
+    bool print_memfull = false;
+    char *fn = NULL;
+    if (!parse_command_line_p2(argc, argv, &print_header, &print_segments, &print_membrief,
+                               &print_memfull, &fn)) {
+        return EXIT_FAILURE;
     }
-    int c;
-    while ((c = getopt(argc, argv, "hH")) != -1) {
-        //checking for multiple args
-        if (optind != argc - 1) {
-            usage_p1(argv);
+    if (fn != NULL) {
+        // open Mini-ELF binary
+        FILE *f = fopen(fn, "r");
+        if (!f) {
+            printf("Failed to read file\n");
+
             return EXIT_FAILURE;
         }
-        switch(c) {
-            //diplay usage
-            case 'h':
-                help = true;
-                show = false;
-                break;
-            //show the Mini-ELF header
-            case 'H':
-                show = true;
-                break;
-            default:
-                usage_p1(argv);
+
+        // P1: load and check Mini-ELF header
+        elf_hdr_t hdr;
+        if (!read_header(f, &hdr)) {
+            printf("Failed to read file\n");
+
+            return EXIT_FAILURE;
+        }
+
+        // P1 output
+        if (print_header) {
+            dump_header(hdr);
+        }
+
+        // P2 read phdrs
+        byte_t* mem = (byte_t*)calloc(MEMSIZE, 1);
+
+        struct elf_phdr phdrs[hdr.e_num_phdr];
+        int offset = hdr.e_phdr_start;
+        for (int i = 0; i < hdr.e_num_phdr; i++) {
+            if (!read_phdr(f, offset, &phdrs[i])) {
+                printf("Failed to read file\n");
+                free(mem);
+
                 return EXIT_FAILURE;
-        }
-
-    }
-    //check if file is valid
-    FILE *file = fopen(filename, "r");
-    if (file == NULL) {
-        printf("Failed to read file\n");
-        return EXIT_FAILURE;
-    }
-
-    elf_hdr_t* header = malloc(sizeof(elf_hdr_t));
-    read_header(file, header);
-    unsigned char* str = header;
-    //check if header is valid
-    if (header->magic != 0x00464c45) {
-        printf("Failed to read file\n");
-        free(header);
-        return EXIT_FAILURE;
-    }
-    //fixes mem leak when -H not passed
-    if (!show) {
-        free(header);
-    }
-
-    if (help) {
-        //print standard help option
-        usage_p1(argv);
-        return EXIT_SUCCESS;
-    }
-
-    if (show) {
-        for (int i = 0; i < 15; i++) {
-            //for "double" space between bytes
-            if (i == 8) {
-                printf(" ");
             }
-            printf("%02x ", str[i]);
-        }
-        printf("%02x", str[16]);
-        printf("\nMini-ELF version %d\n", header->e_version);
-        printf("Entry point 0x%x\n", header->e_entry);
-        printf("There are %d program headers, starting at offset %d (0x%x)\n", header->e_num_phdr,
-               header->e_phdr_start, header->e_phdr_start);
-        if (header->e_symtab == 0) {
-            printf("There is no symbol table present\n");
-        } else {
-            printf("There is a symbol table starting at offset %d (0x%x)\n", header->e_symtab,
-                   header->e_symtab);
+            //phdrs are 20 bytes
+            offset += 20;
         }
 
-        if (header->e_strtab == 0) {
-            printf("There is no string table present\n");
-        } else {
-            printf("There is a string table starting at offset %d (0x%x)\n", header->e_strtab,
-                   header->e_strtab);
+        // P2 print segments
+        if (print_segments) {
+            dump_phdrs(hdr.e_num_phdr, phdrs);
         }
-        free(header);
+
+
+        // P2 print membrief
+        if (print_membrief) {
+            for (int i = 0; i < hdr.e_num_phdr; i++) {
+                if (!load_segment(f, mem, phdrs[i])) {
+                    printf("Failed to read file\n");
+                    free(mem);
+                    return EXIT_FAILURE;
+
+                }
+                dump_memory(mem, phdrs[i].p_vaddr, phdrs[i].p_vaddr + phdrs[i].p_filesz);
+            }
+        }
+        // P2 print membrief
+        if (print_memfull) {
+            for (int i = 0; i < hdr.e_num_phdr; i++) {
+                if (!load_segment(f, mem, phdrs[i])) {
+                    //printf("Failed to read file\n");
+                    free(mem);
+                    return EXIT_FAILURE;
+                }
+            }
+            dump_memory(mem, 0, MEMSIZE);
+        }
+
+        // cleanup
+        fclose(f);
+        free(mem);
+
 
     }
+
     return EXIT_SUCCESS;
 }
 
