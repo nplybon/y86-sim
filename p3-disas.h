@@ -78,9 +78,4 @@ void disassemble_data   (byte_t *memory, elf_phdr_t *phdr);
  */
 void disassemble_rodata (byte_t *memory, elf_phdr_t *phdr);
 
-
-void print_reg (y86_inst_t ins);
-void reg_a (y86_inst_t ins);
-void reg_b (y86_inst_t ins);
-
 #endif
